@@ -154,7 +154,7 @@ export function App() {
       <header className="topbar">
         <div>
           <span className="eyebrow">Manão, respeite o seu "cumpadi". Enfie onde quiser isso que você chama de planilha!</span>
-          <h1>Sistema de Controle de adiantamentos :: Studio Dois</h1>
+          <h1>Sistema de Controle de Adiantamentos Studio Dois</h1>
           <p>Gestão simples de valores emprestados, pagamentos e quitações por funcionário.</p>
         </div>
         <div className="top-actions">
