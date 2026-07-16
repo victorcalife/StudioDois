@@ -407,7 +407,11 @@ function AdvancePanel({ employees, onSaved }: { employees: Employee[]; onSaved: 
         <select required value={form.funcionarioId} onChange={(event) => setForm({ ...form, funcionarioId: event.target.value })}><option value="">Selecione funcionário</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.nome}</option>)}</select>
         <div className="form-row"><select value={form.tipo} onChange={(event) => setForm({ ...form, tipo: event.target.value as Tipo })}>{tipos.map((item) => <option key={item} value={item}>{item}</option>)}</select><input required type="text" inputMode="numeric" value={form.valorOriginal} onChange={(event) => setForm({ ...form, valorOriginal: formatCurrencyInput(event.target.value) })} placeholder="R$ 0,00" /></div>
         <input required value={form.descricao} onChange={(event) => setForm({ ...form, descricao: event.target.value })} placeholder="Descrição" />
-        <div className="form-row"><input required type="date" value={form.dataVencimento} onChange={(event) => setForm({ ...form, dataVencimento: event.target.value })} /><input type="number" min="1" max="120" value={form.parcelasTotal} onChange={(event) => setForm({ ...form, parcelasTotal: event.target.value })} placeholder="Parcelas" /><input type="number" min="1" max="3650" value={form.intervaloDias} onChange={(event) => setForm({ ...form, intervaloDias: event.target.value })} placeholder="Intervalo em dias" /></div>
+        <div className="form-row">
+          <label className="field-with-label"><span>1ª cobrança</span><input required type="date" value={form.dataVencimento} onChange={(event) => setForm({ ...form, dataVencimento: event.target.value })} /></label>
+          <label className="field-with-label"><span>Nº parcelas</span><input type="number" min="1" max="120" value={form.parcelasTotal} onChange={(event) => setForm({ ...form, parcelasTotal: event.target.value })} /></label>
+          <label className="field-with-label"><span>Cobrar a cada</span><input type="number" min="1" max="3650" value={form.intervaloDias} onChange={(event) => setForm({ ...form, intervaloDias: event.target.value })} /></label>
+        </div>
         {installments.length > 0 && <div className="installments-editor">
           <strong>Datas de recebimento</strong>
           {installments.map((item, index) => <div className="installment-row" key={item.numero}>
