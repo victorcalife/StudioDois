@@ -16,17 +16,20 @@ Arquitetura consolidada:
 Migration criada:
 
 - `migrations/01_criar_gestao_adiantamentos.sql`
+- `migrations/02_criar_parcelas_recebimento.sql`
 
 Objetos criados pela migration:
 
 - `funcionarios`
 - `adiantamentos`
 - `pagamentos_adiantamento`
+- `parcelas_adiantamento`
 - `vw_adiantamentos_saldo`
+- `vw_parcelas_recebimento`
 - função/trigger `set_updated_at`
 - índices para busca por nome, ativos, funcionário, status, tipo, vencimento, lançamento e pagamentos
 
-O usuário deve executar essa migration manualmente no TablePlus no PostgreSQL da Railway antes de usar o sistema.
+O usuário deve executar as migrations manualmente no TablePlus no PostgreSQL da Railway antes de usar o sistema, sempre na ordem crescente. A migration `02` substitui as views com `DROP VIEW` + `CREATE VIEW` para evitar rollback do PostgreSQL ao mudar a estrutura de colunas de `vw_adiantamentos_saldo`.
 
 ## Backend
 
@@ -38,6 +41,7 @@ Arquivos principais:
 - `backend/src/routes/auth.ts`: login por senha única.
 - `backend/src/routes/employees.ts`: CRUD básico e resumo por funcionário.
 - `backend/src/routes/advances.ts`: lançamentos, pagamentos parciais, quitação e reabertura.
+- `backend/src/routes/advances.ts`: também cria parcelas futuras por lançamento, lista recebíveis e recebe parcela individual.
 - `backend/src/routes/dashboard.ts`: KPIs e dados dos gráficos.
 - `backend/scripts/hash-password.mjs`: gera hash bcrypt para `ACCESS_PASSWORD_HASH`.
 
@@ -82,6 +86,9 @@ Funcionalidades visuais/operacionais:
 - Lançamento de valores.
 - Pagamento parcial.
 - Carimbo visual e persistente de quitado.
+- Parcelas com datas futuras por lançamento.
+- Agenda de recebíveis por vencidos, próximos dias, mês atual e futuros.
+- Baixa de parcela individual.
 - Filtros e exportação CSV.
 - Colunas customizáveis.
 - Tabela vira cards em telas pequenas.

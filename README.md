@@ -16,6 +16,9 @@ Não usa ORM, não usa `.env` e não executa migrations automaticamente. O banco
 - Lançamento de adiantamentos, empréstimos, compras, ferramentas e outros débitos.
 - Pagamento parcial por lançamento.
 - Botão de “carimbar quitado”, registrando a quitação real no banco.
+- Parcelamento do recebimento em múltiplas datas futuras no próprio lançamento.
+- Agenda de recebíveis com vencidos, próximos 7 dias, próximos 30 dias, mês atual e futuros.
+- Recebimento por parcela, com baixa automática do saldo do lançamento.
 - Dashboard com KPIs de total emprestado, total pago, saldo aberto e funcionários ativos.
 - Gráficos por funcionário e por tipo de lançamento.
 - Filtros por busca, status e tipo.
@@ -28,15 +31,22 @@ Não usa ORM, não usa `.env` e não executa migrations automaticamente. O banco
 Execute manualmente no TablePlus, no PostgreSQL da Railway:
 
 - `migrations/01_criar_gestao_adiantamentos.sql`
+- `migrations/02_criar_parcelas_recebimento.sql`
 
-Esse script cria:
+Execute na ordem acima. A migration `02` é incremental e cria a agenda de recebíveis parcelados.
+
+A estrutura cria:
 
 - `funcionarios`
 - `adiantamentos`
 - `pagamentos_adiantamento`
+- `parcelas_adiantamento`
 - `vw_adiantamentos_saldo`
+- `vw_parcelas_recebimento`
 - índices para filtros, buscas, status, vencimento e relacionamentos
 - triggers de `updated_at`
+
+Observação operacional: se a primeira tentativa da migration `02` tiver dado rollback por alteração de view, use a versão atual do arquivo. Ela derruba e recria as views com segurança dentro da própria transação.
 
 ## Variáveis do backend no Railway
 
@@ -88,6 +98,8 @@ Criar dois serviços apontando para o mesmo repositório:
 - O Vite preview não possui domínio hardcoded; o host permitido é resolvido por variável de ambiente.
 - Erros não retornam detalhes sensíveis do banco.
 - Pagamento parcial maior que o saldo em aberto é bloqueado.
+- Pagamentos por lançamento são alocados nas parcelas abertas mais antigas.
+- O carimbo de quitado baixa todas as parcelas em aberto do lançamento.
 
 ## Validação realizada
 

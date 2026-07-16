@@ -1,14 +1,23 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Banknote, CheckCircle2, Download, Eye, EyeOff, LockKeyhole, Plus, RefreshCcw, Search, Stamp, Users } from 'lucide-react';
+import { AlertTriangle, Banknote, CalendarClock, CheckCircle2, Download, Eye, EyeOff, LockKeyhole, Plus, RefreshCcw, Search, Stamp, Users } from 'lucide-react';
 import { api, clearToken, getToken, login, setToken } from './api';
-import type { Advance, Dashboard, Employee, Status, Tipo } from './types';
+import type { Advance, Dashboard, Employee, Receivable, ReceivableRange, Status, Tipo } from './types';
 
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const date = new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' });
 const colors = ['#0f4c81', '#1e78b8', '#475569', '#14b8a6', '#f59e0b'];
 const tipos: Tipo[] = ['adiantamento', 'emprestimo', 'compra', 'ferramentas', 'outro'];
 const statuses: Array<Status | ''> = ['', 'aberto', 'parcial', 'quitado', 'cancelado'];
+const receivableRanges: Array<{ value: ReceivableRange | ''; label: string }> = [
+  { value: '', label: 'Todos recebíveis' },
+  { value: 'vencida', label: 'Vencidos' },
+  { value: 'proximos_7_dias', label: 'Próximos 7 dias' },
+  { value: 'proximos_30_dias', label: 'Próximos 30 dias' },
+  { value: 'mes_atual', label: 'Mês atual' },
+  { value: 'futura', label: 'Futuros' },
+  { value: 'paga', label: 'Pagos' }
+];
 
 const columnLabels = {
   funcionario: 'Funcionário',
@@ -41,16 +50,31 @@ function asChartValue<T extends Record<string, string>>(rows: T[], keys: Array<k
   });
 }
 
+function addMonths(dateValue: string, months: number) {
+  const [year, month, day] = dateValue.split('-').map(Number);
+  const dateValueUtc = new Date(Date.UTC(year, month - 1 + months, day));
+  return dateValueUtc.toISOString().slice(0, 10);
+}
+
+function splitMoney(total: number, count: number) {
+  const cents = Math.round(total * 100);
+  const base = Math.floor(cents / count);
+  const remainder = cents - base * count;
+  return Array.from({ length: count }, (_, index) => ((base + (index < remainder ? 1 : 0)) / 100).toFixed(2));
+}
+
 export function App() {
   const [token, setSessionToken] = useState(() => getToken());
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [advances, setAdvances] = useState<Advance[]>([]);
+  const [receivables, setReceivables] = useState<Receivable[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<Status | ''>('');
   const [tipo, setTipo] = useState<Tipo | ''>('');
+  const [receivableRange, setReceivableRange] = useState<ReceivableRange | ''>('');
   const [columns, setColumns] = useState<Record<VisibleColumn, boolean>>({
     funcionario: true,
     tipo: true,
@@ -71,14 +95,19 @@ export function App() {
       if (search) query.set('search', search);
       if (status) query.set('status', status);
       if (tipo) query.set('tipo', tipo);
-      const [dash, funcs, lancamentos] = await Promise.all([
+      const receivableQuery = new URLSearchParams();
+      if (search) receivableQuery.set('search', search);
+      if (receivableRange) receivableQuery.set('faixa', receivableRange);
+      const [dash, funcs, lancamentos, parcelas] = await Promise.all([
         api<Dashboard>('/dashboard'),
         api<Employee[]>('/employees'),
-        api<Advance[]>(`/advances?${query.toString()}`)
+        api<Advance[]>(`/advances?${query.toString()}`),
+        api<Receivable[]>(`/advances/receivables?${receivableQuery.toString()}`)
       ]);
       setDashboard(dash);
       setEmployees(funcs);
       setAdvances(lancamentos);
+      setReceivables(parcelas);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Erro ao carregar dados.');
       if (!getToken()) setSessionToken(null);
@@ -94,7 +123,7 @@ export function App() {
   useEffect(() => {
     const timer = window.setTimeout(() => void loadData(), 300);
     return () => window.clearTimeout(timer);
-  }, [search, status, tipo]);
+  }, [search, status, tipo, receivableRange]);
 
   if (!token) {
     return <LoginScreen onLogin={(newToken) => { setToken(newToken); setSessionToken(newToken); }} />;
@@ -124,7 +153,12 @@ export function App() {
         <Kpi icon={<Banknote />} label="Total emprestado" value={toMoney(dashboard?.resumo.total_emprestado ?? 0)} />
         <Kpi icon={<CheckCircle2 />} label="Total pago" value={toMoney(dashboard?.resumo.total_pago ?? 0)} />
         <Kpi icon={<Stamp />} label="Saldo aberto" value={toMoney(dashboard?.resumo.saldo_aberto ?? 0)} highlight />
+        <Kpi icon={<AlertTriangle />} label="Vencido" value={toMoney(dashboard?.resumo.valor_vencido ?? 0)} highlight />
+        <Kpi icon={<CalendarClock />} label="Próximos 7 dias" value={toMoney(dashboard?.resumo.valor_proximos_7_dias ?? 0)} />
+        <Kpi icon={<CalendarClock />} label="Próximos 30 dias" value={toMoney(dashboard?.resumo.valor_proximos_30_dias ?? 0)} />
       </section>
+
+      <ReceivablesPanel receivables={receivables} range={receivableRange} setRange={setReceivableRange} onSaved={loadData} />
 
       <section className="dashboard-grid">
         <article className="panel chart-panel">
@@ -222,6 +256,63 @@ function Kpi({ icon, label, value, highlight = false }: { icon: JSX.Element; lab
   return <article className={`kpi ${highlight ? 'highlight' : ''}`}><div className="kpi-icon">{icon}</div><span>{label}</span><strong>{value}</strong></article>;
 }
 
+function ReceivablesPanel({ receivables, range, setRange, onSaved }: { receivables: Receivable[]; range: ReceivableRange | ''; setRange: (value: ReceivableRange | '') => void; onSaved: () => Promise<void> }) {
+  const [busyId, setBusyId] = useState('');
+
+  async function receive(id: string) {
+    setBusyId(id);
+    await api(`/advances/installments/${id}/receive`, { method: 'POST', body: JSON.stringify({}) });
+    await onSaved();
+    setBusyId('');
+  }
+
+  return (
+    <section className="panel receivables-panel">
+      <div className="ledger-head">
+        <div>
+          <h2>Agenda de recebimentos</h2>
+          <p>Veja quem deve pagar nos próximos dias, semanas e mês, com cada parcela em sua data.</p>
+        </div>
+        <div className="filters">
+          <select value={range} onChange={(event) => setRange(event.target.value as ReceivableRange | '')}>{receivableRanges.map((item) => <option key={item.value || 'todos-recebiveis'} value={item.value}>{item.label}</option>)}</select>
+        </div>
+      </div>
+      <div className="receivable-grid">
+        {receivables.map((item) => <article key={item.id} className={`receivable-card ${item.faixa_recebimento}`}>
+          <div>
+            <strong>{item.funcionario_nome}</strong>
+            <span>{item.descricao}</span>
+          </div>
+          <div>
+            <small>Parcela {item.numero}</small>
+            <b>{toMoney(item.saldo_parcela)}</b>
+          </div>
+          <div>
+            <small>Vencimento</small>
+            <b>{toDate(item.data_vencimento)}</b>
+          </div>
+          <StatusChip range={item.faixa_recebimento} />
+          {item.faixa_recebimento === 'paga' ? <span className="stamp-label compact-stamp">PAGO</span> : <button className="primary small" disabled={busyId === item.id} onClick={() => void receive(item.id)}><CheckCircle2 size={15} /> Receber</button>}
+        </article>)}
+      </div>
+      {receivables.length === 0 && <div className="empty-state">Nenhum recebível encontrado para o filtro atual.</div>}
+    </section>
+  );
+}
+
+function StatusChip({ range }: { range: ReceivableRange }) {
+  const labels: Record<ReceivableRange, string> = {
+    vencida: 'Vencida',
+    proximos_7_dias: '7 dias',
+    proximos_30_dias: '30 dias',
+    mes_atual: 'Mês atual',
+    futura: 'Futura',
+    paga: 'Paga',
+    cancelada: 'Cancelada'
+  };
+  return <span className={`receivable-status ${range}`}>{labels[range]}</span>;
+}
+
 function EmployeePanel({ employees, onSaved }: { employees: Employee[]; onSaved: () => Promise<void> }) {
   const [form, setForm] = useState({ nome: '', cargo: '', telefone: '', observacoes: '' });
   const [busy, setBusy] = useState(false);
@@ -253,17 +344,36 @@ function EmployeePanel({ employees, onSaved }: { employees: Employee[]; onSaved:
 
 function AdvancePanel({ employees, onSaved }: { employees: Employee[]; onSaved: () => Promise<void> }) {
   const [form, setForm] = useState({ funcionarioId: '', tipo: 'adiantamento' as Tipo, descricao: '', valorOriginal: '', dataVencimento: '', parcelasTotal: '1', observacoes: '' });
+  const [installments, setInstallments] = useState<Array<{ numero: number; dataVencimento: string; valorPrevisto: string }>>([]);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!form.funcionarioId && employees[0]) setForm((current) => ({ ...current, funcionarioId: employees[0].id }));
   }, [employees, form.funcionarioId]);
 
+  useEffect(() => {
+    const total = Number(form.valorOriginal);
+    const count = Number(form.parcelasTotal);
+    if (!total || !count || !form.dataVencimento) {
+      setInstallments([]);
+      return;
+    }
+    const values = splitMoney(total, count);
+    setInstallments(values.map((value, index) => ({ numero: index + 1, valorPrevisto: value, dataVencimento: addMonths(form.dataVencimento, index) })));
+  }, [form.valorOriginal, form.parcelasTotal, form.dataVencimento]);
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
-    await api('/advances', { method: 'POST', body: JSON.stringify(nulls({ ...form, valorOriginal: Number(form.valorOriginal), parcelasTotal: Number(form.parcelasTotal), dataVencimento: form.dataVencimento || null })) });
+    await api('/advances', { method: 'POST', body: JSON.stringify(nulls({
+      ...form,
+      valorOriginal: Number(form.valorOriginal),
+      parcelasTotal: installments.length,
+      dataVencimento: form.dataVencimento || null,
+      parcelasRecebimento: installments.map((item) => ({ numero: item.numero, valorPrevisto: Number(item.valorPrevisto), dataVencimento: item.dataVencimento }))
+    })) });
     setForm((current) => ({ ...current, descricao: '', valorOriginal: '', dataVencimento: '', parcelasTotal: '1', observacoes: '' }));
+    setInstallments([]);
     await onSaved();
     setBusy(false);
   }
@@ -275,7 +385,15 @@ function AdvancePanel({ employees, onSaved }: { employees: Employee[]; onSaved: 
         <select required value={form.funcionarioId} onChange={(event) => setForm({ ...form, funcionarioId: event.target.value })}><option value="">Selecione funcionário</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.nome}</option>)}</select>
         <div className="form-row"><select value={form.tipo} onChange={(event) => setForm({ ...form, tipo: event.target.value as Tipo })}>{tipos.map((item) => <option key={item} value={item}>{item}</option>)}</select><input required type="number" min="0.01" step="0.01" value={form.valorOriginal} onChange={(event) => setForm({ ...form, valorOriginal: event.target.value })} placeholder="Valor" /></div>
         <input required value={form.descricao} onChange={(event) => setForm({ ...form, descricao: event.target.value })} placeholder="Descrição" />
-        <div className="form-row"><input type="date" value={form.dataVencimento} onChange={(event) => setForm({ ...form, dataVencimento: event.target.value })} /><input type="number" min="1" value={form.parcelasTotal} onChange={(event) => setForm({ ...form, parcelasTotal: event.target.value })} placeholder="Parcelas" /></div>
+        <div className="form-row"><input required type="date" value={form.dataVencimento} onChange={(event) => setForm({ ...form, dataVencimento: event.target.value })} /><input type="number" min="1" max="120" value={form.parcelasTotal} onChange={(event) => setForm({ ...form, parcelasTotal: event.target.value })} placeholder="Parcelas" /></div>
+        {installments.length > 0 && <div className="installments-editor">
+          <strong>Datas de recebimento</strong>
+          {installments.map((item, index) => <div className="installment-row" key={item.numero}>
+            <span>{item.numero}ª</span>
+            <input type="date" value={item.dataVencimento} onChange={(event) => setInstallments((current) => current.map((parcel, parcelIndex) => parcelIndex === index ? { ...parcel, dataVencimento: event.target.value } : parcel))} />
+            <input type="number" min="0.01" step="0.01" value={item.valorPrevisto} onChange={(event) => setInstallments((current) => current.map((parcel, parcelIndex) => parcelIndex === index ? { ...parcel, valorPrevisto: event.target.value } : parcel))} />
+          </div>)}
+        </div>}
         <input value={form.observacoes} onChange={(event) => setForm({ ...form, observacoes: event.target.value })} placeholder="Observação" />
         <button className="primary" disabled={busy || employees.length === 0}><Plus size={16} /> Lançar valor</button>
       </form>
@@ -323,7 +441,7 @@ function LedgerTable({ advances, columns, onSaved }: { advances: Advance[]; colu
             {columns.valor && <td data-label="Valor">{toMoney(item.valor_original)}</td>}
             {columns.pago && <td data-label="Pago">{toMoney(item.valor_pago)}</td>}
             {columns.saldo && <td data-label="Saldo"><strong>{toMoney(item.saldo_aberto)}</strong></td>}
-            {columns.vencimento && <td data-label="Vencimento">{toDate(item.data_vencimento)}</td>}
+            {columns.vencimento && <td data-label="Vencimento">{toDate(item.proximo_vencimento ?? item.data_vencimento)}<small>{item.parcelas_abertas ?? 0} parcela(s) aberta(s)</small></td>}
             {columns.status && <td data-label="Status"><StatusBadge status={item.status_calculado} /></td>}
             <td data-label="Ações" className="actions-cell">
               {item.status_calculado === 'quitado' ? <span className="stamp-label">QUITADO</span> : <><div className="pay-inline"><input type="number" min="0.01" step="0.01" value={payment[item.id] ?? ''} onChange={(event) => setPayment({ ...payment, [item.id]: event.target.value })} placeholder="R$" /><button className="ghost small" disabled={busyId === item.id} onClick={() => void pay(item.id)}>Pagar</button></div><button className="settle" disabled={busyId === item.id} onClick={() => void settle(item.id)}><Stamp size={15} /> Carimbar quitado</button></>}

@@ -24,6 +24,12 @@ export const advanceSchema = z.object({
   dataLancamento: dateValue,
   dataVencimento: dateValue,
   parcelasTotal: z.coerce.number().int().min(1).max(120).optional(),
+  parcelasRecebimento: z.array(z.object({
+    numero: z.coerce.number().int().min(1).max(120),
+    valorPrevisto: money,
+    dataVencimento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    observacoes: nullableText
+  })).min(1).max(120).optional(),
   observacoes: nullableText
 });
 
@@ -33,6 +39,12 @@ export const advanceUpdateSchema = advanceSchema.partial().extend({
 
 export const paymentSchema = z.object({
   valor: money,
+  pagoEm: dateValue,
+  observacoes: nullableText
+});
+
+export const installmentPaymentSchema = z.object({
+  valor: money.optional(),
   pagoEm: dateValue,
   observacoes: nullableText
 });

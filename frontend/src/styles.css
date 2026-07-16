@@ -317,6 +317,115 @@ input:focus, select:focus {
   margin-top: 14px;
 }
 
+.receivables-panel {
+  margin-top: 14px;
+}
+
+.receivable-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.receivable-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) 0.75fr 0.85fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--blue);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.receivable-card.vencida {
+  border-left-color: #dc2626;
+  background: #fff7f7;
+}
+
+.receivable-card.proximos_7_dias {
+  border-left-color: #f59e0b;
+}
+
+.receivable-card.paga {
+  border-left-color: #10b981;
+  background: #f0fdf4;
+}
+
+.receivable-card strong, .receivable-card b {
+  display: block;
+  color: #172033;
+}
+
+.receivable-card span, .receivable-card small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.receivable-status {
+  display: inline-flex;
+  justify-content: center;
+  padding: 6px 9px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 900;
+  color: var(--blue);
+  background: #e8f3fb;
+  white-space: nowrap;
+}
+
+.receivable-status.vencida {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.receivable-status.proximos_7_dias, .receivable-status.proximos_30_dias {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.receivable-status.paga {
+  color: #047857;
+  background: #d1fae5;
+}
+
+.compact-stamp {
+  padding: 6px 10px;
+  font-size: 0.72rem;
+}
+
+.installments-editor {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid #dce8f4;
+  border-radius: 14px;
+  background: #f8fbff;
+}
+
+.installments-editor > strong {
+  color: var(--slate);
+  font-size: 0.86rem;
+}
+
+.installment-row {
+  display: grid;
+  grid-template-columns: 34px 1fr 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.installment-row span {
+  color: var(--blue);
+  font-weight: 900;
+}
+
+.installment-row input {
+  padding: 8px 9px;
+}
+
 .ledger-head p {
   color: var(--muted);
 }
@@ -526,6 +635,10 @@ td small {
   .kpi-grid, .dashboard-grid, .work-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .receivable-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 760px) {
@@ -545,6 +658,11 @@ td small {
 
   .kpi-grid, .dashboard-grid, .work-grid {
     grid-template-columns: 1fr;
+  }
+
+  .receivable-card {
+    grid-template-columns: 1fr;
+    align-items: stretch;
   }
 
   .panel, .topbar {
