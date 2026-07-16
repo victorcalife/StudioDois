@@ -59,7 +59,9 @@ Configurar no serviço `frontend`:
 
 - `VITE_API_URL`: URL pública do backend Railway.
 
-O serviço frontend usa a porta injetada pelo Railway no comando `start`.
+O serviço frontend usa `VITE_API_URL` exclusivamente para chamar a API. Para o host público do próprio frontend, o `vite.config.ts` não possui domínio fixo: ele usa a variável automática `RAILWAY_PUBLIC_DOMAIN`, quando disponível no Railway, e também aceita `ALLOWED_ORIGINS` caso essa variável seja disponibilizada no serviço frontend para restringir o `preview.allowedHosts`.
+
+O serviço frontend usa a porta injetada pelo Railway em `PORT`, sem porta fixa no comando `start`.
 
 ## Deploy Railway
 
@@ -82,6 +84,7 @@ Criar dois serviços apontando para o mesmo repositório:
 - Sem usuário/senha tradicional: somente senha única, armazenada como bcrypt hash em variável Railway.
 - Tokens expiram em 8 horas.
 - CORS aceita apenas as origens configuradas em `ALLOWED_ORIGINS`.
+- O Vite preview não possui domínio hardcoded; o host permitido é resolvido por variável de ambiente.
 - Erros não retornam detalhes sensíveis do banco.
 - Pagamento parcial maior que o saldo em aberto é bloqueado.
 

@@ -63,6 +63,14 @@ Variável obrigatória do frontend:
 
 - `VITE_API_URL`
 
+Variáveis usadas pelo runtime do Vite preview no frontend:
+
+- `PORT`, injetada pela Railway.
+- `RAILWAY_PUBLIC_DOMAIN`, quando disponibilizada automaticamente pela Railway.
+- `ALLOWED_ORIGINS`, opcional no frontend caso seja necessário restringir explicitamente `preview.allowedHosts` sem hardcode.
+
+O frontend não possui domínio, URL pública, host ou porta fixa no `vite.config.ts` ou nos scripts do `package.json`.
+
 Funcionalidades visuais/operacionais:
 
 - Dashboard com KPIs.
