@@ -45,6 +45,7 @@ Arquivos principais:
 - `backend/src/routes/advances.ts`: lançamentos, pagamentos parciais, quitação e reabertura.
 - `backend/src/routes/advances.ts`: também cria parcelas futuras por lançamento, lista recebíveis e recebe parcela individual.
 - `backend/src/routes/advances.ts`: rateia pagamentos maiores/antecipados nas próximas parcelas abertas e recalcula saldos pela view.
+- `backend/src/routes/advances.ts`: permite fechar parcela com pagamento menor e redistribuir residual nas próximas; se não houver próxima aberta, cria parcela residual automática no mesmo adiantamento.
 - `backend/src/routes/dashboard.ts`: KPIs e dados dos gráficos.
 - `backend/scripts/hash-password.mjs`: gera hash bcrypt para `ACCESS_PASSWORD_HASH`.
 
@@ -94,6 +95,7 @@ Funcionalidades visuais/operacionais:
 - Agenda de recebíveis por vencidos, próximos dias, mês atual e futuros.
 - Baixa de parcela individual.
 - Recebimento maior que a parcela, alocando excedente nas próximas parcelas abertas.
+- Recebimento menor que a parcela com escolha na UI: manter em aberto ou fechar e jogar diferença nas próximas parcelas.
 - Máscara monetária brasileira nos campos editáveis: usuário digita apenas números, UI mostra `R$ 1.234,56` e payload envia número decimal esperado pelo PostgreSQL.
 - Filtros e exportação CSV.
 - Colunas customizáveis.

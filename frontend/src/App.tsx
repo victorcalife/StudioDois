@@ -276,12 +276,18 @@ function Kpi({ icon, label, value, highlight = false }: { icon: JSX.Element; lab
 function ReceivablesPanel({ receivables, range, setRange, onSaved }: { receivables: Receivable[]; range: ReceivableRange | ''; setRange: (value: ReceivableRange | '') => void; onSaved: () => Promise<void> }) {
   const [busyId, setBusyId] = useState('');
   const [receivedValues, setReceivedValues] = useState<Record<string, string>>({});
+  const [closeInstallment, setCloseInstallment] = useState<Record<string, boolean>>({});
 
   async function receive(id: string) {
     setBusyId(id);
     const typedValue = parseCurrencyInput(receivedValues[id] ?? '');
-    await api(`/advances/installments/${id}/receive`, { method: 'POST', body: JSON.stringify(typedValue > 0 ? { valor: typedValue } : {}) });
+    await api(`/advances/installments/${id}/receive`, { method: 'POST', body: JSON.stringify({
+      ...(typedValue > 0 ? { valor: typedValue } : {}),
+      fecharParcela: closeInstallment[id] === true,
+      criarParcelaResidual: true
+    }) });
     setReceivedValues({ ...receivedValues, [id]: '' });
+    setCloseInstallment({ ...closeInstallment, [id]: false });
     await onSaved();
     setBusyId('');
   }
@@ -312,7 +318,7 @@ function ReceivablesPanel({ receivables, range, setRange, onSaved }: { receivabl
             <b>{toDate(item.data_vencimento)}</b>
           </div>
           <StatusChip range={item.faixa_recebimento} />
-          {item.faixa_recebimento === 'paga' ? <span className="stamp-label compact-stamp">PAGO</span> : <div className="receive-action"><input type="text" inputMode="numeric" value={receivedValues[item.id] ?? ''} onChange={(event) => setReceivedValues({ ...receivedValues, [item.id]: formatCurrencyInput(event.target.value) })} placeholder="Recebido" /><button className="primary small" disabled={busyId === item.id} onClick={() => void receive(item.id)}><CheckCircle2 size={15} /> Receber</button></div>}
+          {item.faixa_recebimento === 'paga' ? <span className="stamp-label compact-stamp">PAGO</span> : <div className="receive-action"><input type="text" inputMode="numeric" value={receivedValues[item.id] ?? ''} onChange={(event) => setReceivedValues({ ...receivedValues, [item.id]: formatCurrencyInput(event.target.value) })} placeholder="Recebido" /><label className="tiny-check"><input type="checkbox" checked={closeInstallment[item.id] === true} onChange={(event) => setCloseInstallment({ ...closeInstallment, [item.id]: event.target.checked })} />Fechar e jogar diferença</label><button className="primary small" disabled={busyId === item.id} onClick={() => void receive(item.id)}><CheckCircle2 size={15} /> Receber</button></div>}
         </article>)}
       </div>
       {receivables.length === 0 && <div className="empty-state">Nenhum recebível encontrado para o filtro atual.</div>}

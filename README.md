@@ -21,6 +21,8 @@ Não usa ORM, não usa `.env` e não executa migrations automaticamente. O banco
 - Agenda de recebíveis com vencidos, próximos 7 dias, próximos 30 dias, mês atual e futuros.
 - Recebimento por parcela, com baixa automática do saldo do lançamento.
 - Pagamento antecipado ou maior que a parcela é distribuído nas próximas parcelas abertas, recalculando os saldos restantes.
+- Pagamento menor que a parcela pode manter a parcela aberta ou, se marcado na tela, fechar a parcela e redistribuir a diferença nas próximas parcelas.
+- Se a parcela for fechada com diferença e não existirem parcelas futuras abertas, o sistema cria automaticamente uma nova parcela residual no mesmo adiantamento.
 - Campos monetários com máscara brasileira `R$ 1.234,56`, digitando apenas números e enviando payload numérico decimal para a API.
 - Dashboard com KPIs de total emprestado, total pago, saldo aberto e funcionários ativos.
 - Gráficos por funcionário e por tipo de lançamento.
@@ -106,6 +108,7 @@ Criar dois serviços apontando para o mesmo repositório:
 - Pagamentos por lançamento são alocados nas parcelas abertas mais antigas.
 - O carimbo de quitado baixa todas as parcelas em aberto do lançamento.
 - Recebimentos por parcela aceitam valor maior que a parcela, desde que não ultrapassem o saldo aberto do lançamento, e alocam o excedente nas próximas parcelas.
+- Recebimentos menores por parcela podem fechar a parcela e redistribuir o residual nas futuras; se não houver futuras, uma parcela residual é criada automaticamente.
 
 ## Validação realizada
 

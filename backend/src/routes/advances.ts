@@ -104,6 +104,73 @@ async function allocatePaymentToInstallments(
   return remainingPayment;
 }
 
+async function redistributeInstallmentResidual(
+  client: PoolClient,
+  advanceId: string,
+  sourceInstallmentId: string,
+  residual: number,
+  createResidualInstallment: boolean
+) {
+  const source = await client.query(
+    `SELECT pa.numero, pa.data_vencimento::TEXT AS data_vencimento, a.intervalo_cobranca_dias
+       FROM parcelas_adiantamento pa
+       JOIN adiantamentos a ON a.id = pa.adiantamento_id
+      WHERE pa.id = $1 AND pa.adiantamento_id = $2`,
+    [sourceInstallmentId, advanceId]
+  );
+
+  if (source.rowCount === 0) {
+    return 'Parcela base não encontrada para redistribuição.';
+  }
+
+  const futureInstallments = await client.query(
+    `SELECT id
+       FROM parcelas_adiantamento
+      WHERE adiantamento_id = $1
+        AND status = 'aberta'
+        AND id <> $2
+        AND (data_vencimento, numero) > ($3::DATE, $4::INTEGER)
+      ORDER BY data_vencimento ASC, numero ASC
+      FOR UPDATE`,
+    [advanceId, sourceInstallmentId, source.rows[0].data_vencimento, source.rows[0].numero]
+  );
+
+  if (futureInstallments.rows.length > 0) {
+    const cents = Math.round(residual * 100);
+    const base = Math.floor(cents / futureInstallments.rows.length);
+    const remainder = cents - base * futureInstallments.rows.length;
+
+    for (const [index, installment] of futureInstallments.rows.entries()) {
+      const increment = (base + (index < remainder ? 1 : 0)) / 100;
+      await client.query(
+        `UPDATE parcelas_adiantamento
+            SET valor_previsto = valor_previsto + $2
+          WHERE id = $1`,
+        [installment.id, increment]
+      );
+    }
+    return null;
+  }
+
+  if (!createResidualInstallment) {
+    return 'Não existem parcelas futuras abertas para receber o residual.';
+  }
+
+  const nextNumber = await client.query('SELECT COALESCE(MAX(numero), 0) + 1 AS numero FROM parcelas_adiantamento WHERE adiantamento_id = $1', [advanceId]);
+  await client.query(
+    `INSERT INTO parcelas_adiantamento (adiantamento_id, numero, valor_previsto, data_vencimento, observacoes)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [
+      advanceId,
+      nextNumber.rows[0].numero,
+      residual,
+      addDays(source.rows[0].data_vencimento, Number(source.rows[0].intervalo_cobranca_dias)),
+      'Parcela criada automaticamente para residual de parcela fechada com pagamento menor.'
+    ]
+  );
+  return null;
+}
+
 advancesRouter.get('/', async (req, res, next) => {
   try {
     const search = String(req.query.search ?? '').trim();
@@ -219,6 +286,7 @@ advancesRouter.post('/installments/:id/receive', async (req, res, next) => {
     const totalOpen = await client.query('SELECT COALESCE(SUM(saldo_parcela), 0)::NUMERIC(12,2) AS saldo_aberto FROM vw_parcelas_recebimento WHERE adiantamento_id = $1 AND status = $2', [advanceId, 'aberta']);
     const totalRemaining = Number(totalOpen.rows[0].saldo_aberto);
     const amount = body.valor ?? remaining;
+    const closeWithResidual = body.fecharParcela === true && amount < remaining;
 
     if (remaining <= 0) {
       await client.query('ROLLBACK');
@@ -234,6 +302,28 @@ advancesRouter.post('/installments/:id/receive', async (req, res, next) => {
     if (remainingAfterAllocation > 0) {
       await client.query('ROLLBACK');
       return res.status(400).json({ message: 'Não foi possível alocar todo o recebimento nas parcelas abertas.' });
+    }
+
+    if (closeWithResidual) {
+      const paidAfter = Number((alreadyPaid + amount).toFixed(2));
+      const residual = Number((expected - paidAfter).toFixed(2));
+
+      if (residual > 0) {
+        const redistributionError = await redistributeInstallmentResidual(client, advanceId, req.params.id, residual, body.criarParcelaResidual !== false);
+        if (redistributionError) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ message: redistributionError });
+        }
+      }
+
+      await client.query(
+        `UPDATE parcelas_adiantamento
+            SET valor_previsto = $2,
+                status = 'paga',
+                pago_em = COALESCE($3, CURRENT_DATE)
+          WHERE id = $1`,
+        [req.params.id, Math.max(paidAfter, 0.01), body.pagoEm ?? null]
+      );
     }
 
     const balance = await client.query('SELECT valor_original, valor_pago FROM vw_adiantamentos_saldo WHERE id = $1', [advanceId]);

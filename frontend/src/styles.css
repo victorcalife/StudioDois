@@ -429,6 +429,26 @@ input:focus, select:focus {
   padding: 7px 9px;
 }
 
+.tiny-check {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 150px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.tiny-check input {
+  width: 14px;
+  min-width: 14px;
+  height: 14px;
+  min-height: 14px;
+  padding: 0;
+  accent-color: var(--blue);
+}
+
 .compact-stamp {
   padding: 6px 10px;
   font-size: 0.72rem;

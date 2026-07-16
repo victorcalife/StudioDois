@@ -47,5 +47,7 @@ export const paymentSchema = z.object({
 export const installmentPaymentSchema = z.object({
   valor: money.optional(),
   pagoEm: dateValue,
-  observacoes: nullableText
+  observacoes: nullableText,
+  fecharParcela: z.boolean().optional(),
+  criarParcelaResidual: z.boolean().optional()
 });
