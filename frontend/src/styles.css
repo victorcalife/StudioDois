@@ -298,7 +298,7 @@ input:focus, select:focus {
   left: 12px;
   z-index: 1;
   color: var(--blue);
-  font-size: 0.66rem;
+  font-size: 0.56rem;
   font-weight: 900;
   letter-spacing: 0.04em;
   line-height: 1;

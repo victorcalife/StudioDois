@@ -416,7 +416,7 @@ function AdvancePanel({ employees, onSaved }: { employees: Employee[]; onSaved: 
         <div className="form-row">
           <label className="field-with-label"><span>1ª cobrança</span><input required type="date" value={form.dataVencimento} onChange={(event) => setForm({ ...form, dataVencimento: event.target.value })} /></label>
           <label className="field-with-label"><span>Nº parcelas</span><input type="number" min="1" max="120" value={form.parcelasTotal} onChange={(event) => setForm({ ...form, parcelasTotal: event.target.value })} /></label>
-          <label className="field-with-label"><span>Cobrar a cada</span><input type="number" min="1" max="3650" value={form.intervaloDias} onChange={(event) => setForm({ ...form, intervaloDias: event.target.value })} /></label>
+          <label className="field-with-label"><span>Cobrar a cada (dias)</span><input type="number" min="1" max="3650" value={form.intervaloDias} onChange={(event) => setForm({ ...form, intervaloDias: event.target.value })} /></label>
         </div>
         {installments.length > 0 && <div className="installments-editor">
           <strong>Datas de recebimento</strong>
