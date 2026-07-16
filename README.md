@@ -45,7 +45,7 @@ Configurar no serviço `backend`:
 - `DATABASE_URL`: string PostgreSQL da Railway.
 - `JWT_SECRET`: segredo forte para assinar tokens.
 - `ACCESS_PASSWORD_HASH`: hash bcrypt da senha única de entrada.
-- `ALLOWED_ORIGINS`: URL pública do frontend Railway.
+- `ALLOWED_ORIGINS`: URL pública do frontend Railway, sem barra final.
 - `NODE_ENV`: `production`.
 - `PORT`: `8080`.
 
@@ -84,6 +84,7 @@ Criar dois serviços apontando para o mesmo repositório:
 - Sem usuário/senha tradicional: somente senha única, armazenada como bcrypt hash em variável Railway.
 - Tokens expiram em 8 horas.
 - CORS aceita apenas as origens configuradas em `ALLOWED_ORIGINS`.
+- O preflight `OPTIONS` é respondido antes das rotas autenticadas para liberar chamadas do frontend autorizado.
 - O Vite preview não possui domínio hardcoded; o host permitido é resolvido por variável de ambiente.
 - Erros não retornam detalhes sensíveis do banco.
 - Pagamento parcial maior que o saldo em aberto é bloqueado.

@@ -46,9 +46,11 @@ Variáveis obrigatórias do backend:
 - `DATABASE_URL`
 - `JWT_SECRET`
 - `ACCESS_PASSWORD_HASH`
-- `ALLOWED_ORIGINS`
+- `ALLOWED_ORIGINS`, com a URL pública do frontend sem barra final
 - `NODE_ENV=production`
 - `PORT=8080`
+
+O CORS do backend normaliza `ALLOWED_ORIGINS`, aceita URL/domínio, remove barra final para comparação e responde preflight `OPTIONS` antes das rotas protegidas.
 
 ## Frontend
 

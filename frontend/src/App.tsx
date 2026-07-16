@@ -107,8 +107,8 @@ export function App() {
     <main className="app-shell">
       <header className="topbar">
         <div>
-          <span className="eyebrow">Studio 2</span>
-          <h1>Controle de adiantamentos</h1>
+          <span className="eyebrow">Enfia essa planilha da bunda!</span>
+          <h1>Sistema de Controle de adiantamentos :: Studio Dois</h1>
           <p>Gestão simples de valores emprestados, pagamentos e quitações por funcionário.</p>
         </div>
         <div className="top-actions">
