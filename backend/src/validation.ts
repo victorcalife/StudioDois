@@ -24,6 +24,7 @@ export const advanceSchema = z.object({
   dataLancamento: dateValue,
   dataVencimento: dateValue,
   parcelasTotal: z.coerce.number().int().min(1).max(120).optional(),
+  intervaloDias: z.coerce.number().int().min(1).max(3650).optional(),
   parcelasRecebimento: z.array(z.object({
     numero: z.coerce.number().int().min(1).max(120),
     valorPrevisto: money,

@@ -391,6 +391,18 @@ input:focus, select:focus {
   background: #d1fae5;
 }
 
+.receive-action {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.receive-action input {
+  width: 118px;
+  min-height: 34px;
+  padding: 7px 9px;
+}
+
 .compact-stamp {
   padding: 6px 10px;
   font-size: 0.72rem;

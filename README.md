@@ -17,8 +17,11 @@ Não usa ORM, não usa `.env` e não executa migrations automaticamente. O banco
 - Pagamento parcial por lançamento.
 - Botão de “carimbar quitado”, registrando a quitação real no banco.
 - Parcelamento do recebimento em múltiplas datas futuras no próprio lançamento.
+- Escolha da quantidade de parcelas e do intervalo de cobrança em dias.
 - Agenda de recebíveis com vencidos, próximos 7 dias, próximos 30 dias, mês atual e futuros.
 - Recebimento por parcela, com baixa automática do saldo do lançamento.
+- Pagamento antecipado ou maior que a parcela é distribuído nas próximas parcelas abertas, recalculando os saldos restantes.
+- Campos monetários com máscara brasileira `R$ 1.234,56`, digitando apenas números e enviando payload numérico decimal para a API.
 - Dashboard com KPIs de total emprestado, total pago, saldo aberto e funcionários ativos.
 - Gráficos por funcionário e por tipo de lançamento.
 - Filtros por busca, status e tipo.
@@ -32,8 +35,10 @@ Execute manualmente no TablePlus, no PostgreSQL da Railway:
 
 - `migrations/01_criar_gestao_adiantamentos.sql`
 - `migrations/02_criar_parcelas_recebimento.sql`
+- `migrations/03_adicionar_intervalo_cobranca.sql`
 
 Execute na ordem acima. A migration `02` é incremental e cria a agenda de recebíveis parcelados.
+A migration `03` adiciona o intervalo de cobrança em dias ao lançamento.
 
 A estrutura cria:
 
@@ -100,6 +105,7 @@ Criar dois serviços apontando para o mesmo repositório:
 - Pagamento parcial maior que o saldo em aberto é bloqueado.
 - Pagamentos por lançamento são alocados nas parcelas abertas mais antigas.
 - O carimbo de quitado baixa todas as parcelas em aberto do lançamento.
+- Recebimentos por parcela aceitam valor maior que a parcela, desde que não ultrapassem o saldo aberto do lançamento, e alocam o excedente nas próximas parcelas.
 
 ## Validação realizada
 

@@ -17,6 +17,7 @@ Migration criada:
 
 - `migrations/01_criar_gestao_adiantamentos.sql`
 - `migrations/02_criar_parcelas_recebimento.sql`
+- `migrations/03_adicionar_intervalo_cobranca.sql`
 
 Objetos criados pela migration:
 
@@ -26,6 +27,7 @@ Objetos criados pela migration:
 - `parcelas_adiantamento`
 - `vw_adiantamentos_saldo`
 - `vw_parcelas_recebimento`
+- coluna `adiantamentos.intervalo_cobranca_dias`
 - função/trigger `set_updated_at`
 - índices para busca por nome, ativos, funcionário, status, tipo, vencimento, lançamento e pagamentos
 
@@ -42,6 +44,7 @@ Arquivos principais:
 - `backend/src/routes/employees.ts`: CRUD básico e resumo por funcionário.
 - `backend/src/routes/advances.ts`: lançamentos, pagamentos parciais, quitação e reabertura.
 - `backend/src/routes/advances.ts`: também cria parcelas futuras por lançamento, lista recebíveis e recebe parcela individual.
+- `backend/src/routes/advances.ts`: rateia pagamentos maiores/antecipados nas próximas parcelas abertas e recalcula saldos pela view.
 - `backend/src/routes/dashboard.ts`: KPIs e dados dos gráficos.
 - `backend/scripts/hash-password.mjs`: gera hash bcrypt para `ACCESS_PASSWORD_HASH`.
 
@@ -87,8 +90,11 @@ Funcionalidades visuais/operacionais:
 - Pagamento parcial.
 - Carimbo visual e persistente de quitado.
 - Parcelas com datas futuras por lançamento.
+- Definição de quantidade de parcelas e intervalo de cobrança em dias.
 - Agenda de recebíveis por vencidos, próximos dias, mês atual e futuros.
 - Baixa de parcela individual.
+- Recebimento maior que a parcela, alocando excedente nas próximas parcelas abertas.
+- Máscara monetária brasileira nos campos editáveis: usuário digita apenas números, UI mostra `R$ 1.234,56` e payload envia número decimal esperado pelo PostgreSQL.
 - Filtros e exportação CSV.
 - Colunas customizáveis.
 - Tabela vira cards em telas pequenas.

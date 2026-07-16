@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type { PoolClient } from 'pg';
 import { pool, query } from '../db.js';
 import { advanceSchema, advanceUpdateSchema, installmentPaymentSchema, paymentSchema } from '../validation.js';
 
@@ -11,9 +12,9 @@ type InstallmentInput = {
   observacoes?: string | null;
 };
 
-function addMonths(dateValue: string, months: number) {
+function addDays(dateValue: string, days: number) {
   const [year, month, day] = dateValue.split('-').map(Number);
-  const date = new Date(Date.UTC(year, month - 1 + months, day));
+  const date = new Date(Date.UTC(year, month - 1, day + days));
   return date.toISOString().slice(0, 10);
 }
 
@@ -24,7 +25,7 @@ function splitMoney(total: number, count: number) {
   return Array.from({ length: count }, (_, index) => (base + (index < remainder ? 1 : 0)) / 100);
 }
 
-function buildInstallments(total: number, count: number, firstDueDate?: string | null, custom?: InstallmentInput[]) {
+function buildInstallments(total: number, count: number, intervalDays: number, firstDueDate?: string | null, custom?: InstallmentInput[]) {
   if (custom?.length) {
     const sum = custom.reduce((acc, item) => acc + Number(item.valorPrevisto), 0);
     if (Math.abs(sum - total) > 0.01) {
@@ -42,10 +43,65 @@ function buildInstallments(total: number, count: number, firstDueDate?: string |
     installments: values.map((value, index) => ({
       numero: index + 1,
       valorPrevisto: value,
-      dataVencimento: addMonths(firstDueDate, index),
+      dataVencimento: addDays(firstDueDate, index * intervalDays),
       observacoes: null
     }))
   };
+}
+
+async function allocatePaymentToInstallments(
+  client: PoolClient,
+  advanceId: string,
+  amount: number,
+  paidAt?: string | null,
+  notes?: string | null,
+  startFromInstallmentId?: string
+) {
+  let remainingPayment = amount;
+  const selectedInstallment = startFromInstallmentId
+    ? await client.query('SELECT data_vencimento, numero FROM parcelas_adiantamento WHERE id = $1 AND adiantamento_id = $2', [startFromInstallmentId, advanceId])
+    : null;
+
+  const installments = await client.query(
+    `SELECT id, valor_previsto
+       FROM parcelas_adiantamento
+      WHERE adiantamento_id = $1
+        AND status = 'aberta'
+        AND ($2::UUID IS NULL OR id = $2::UUID OR (data_vencimento, numero) > ($3::DATE, $4::INTEGER))
+      ORDER BY CASE WHEN id = $2::UUID THEN 0 ELSE 1 END ASC,
+               data_vencimento ASC,
+               numero ASC
+      FOR UPDATE`,
+    [
+      advanceId,
+      startFromInstallmentId ?? null,
+      selectedInstallment?.rows[0]?.data_vencimento ?? null,
+      selectedInstallment?.rows[0]?.numero ?? 0
+    ]
+  );
+
+  for (const installment of installments.rows) {
+    if (remainingPayment <= 0) break;
+    const paid = await client.query('SELECT COALESCE(SUM(valor), 0)::NUMERIC(12,2) AS valor_pago FROM pagamentos_adiantamento WHERE parcela_id = $1', [installment.id]);
+    const installmentBalance = Math.max(Number(installment.valor_previsto) - Number(paid.rows[0].valor_pago), 0);
+    const allocated = Math.min(remainingPayment, installmentBalance);
+
+    if (allocated <= 0) continue;
+
+    await client.query(
+      `INSERT INTO pagamentos_adiantamento (adiantamento_id, parcela_id, valor, pago_em, observacoes)
+       VALUES ($1, $2, $3, COALESCE($4, CURRENT_DATE), $5)`,
+      [advanceId, installment.id, allocated, paidAt ?? null, notes ?? null]
+    );
+
+    remainingPayment = Number((remainingPayment - allocated).toFixed(2));
+
+    if (allocated >= installmentBalance) {
+      await client.query('UPDATE parcelas_adiantamento SET status = $2, pago_em = COALESCE($3, CURRENT_DATE) WHERE id = $1', [installment.id, 'paga', paidAt ?? null]);
+    }
+  }
+
+  return remainingPayment;
 }
 
 advancesRouter.get('/', async (req, res, next) => {
@@ -79,7 +135,8 @@ advancesRouter.post('/', async (req, res, next) => {
   try {
     const body = advanceSchema.parse(req.body);
     const parcelasTotal = body.parcelasRecebimento?.length ?? body.parcelasTotal ?? 1;
-    const generated = buildInstallments(body.valorOriginal, parcelasTotal, body.dataVencimento ?? body.dataLancamento, body.parcelasRecebimento);
+    const intervaloDias = body.intervaloDias ?? 30;
+    const generated = buildInstallments(body.valorOriginal, parcelasTotal, intervaloDias, body.dataVencimento ?? body.dataLancamento, body.parcelasRecebimento);
 
     if (generated.error) {
       return res.status(400).json({ message: generated.error });
@@ -87,10 +144,10 @@ advancesRouter.post('/', async (req, res, next) => {
 
     await client.query('BEGIN');
     const result = await client.query<{ id: string }>(
-      `INSERT INTO adiantamentos (funcionario_id, tipo, descricao, valor_original, data_lancamento, data_vencimento, parcelas_total, observacoes)
-       VALUES ($1, $2, $3, $4, COALESCE($5, CURRENT_DATE), $6, COALESCE($7, 1), $8)
+      `INSERT INTO adiantamentos (funcionario_id, tipo, descricao, valor_original, data_lancamento, data_vencimento, parcelas_total, intervalo_cobranca_dias, observacoes)
+       VALUES ($1, $2, $3, $4, COALESCE($5, CURRENT_DATE), $6, COALESCE($7, 1), $8, $9)
        RETURNING id`,
-      [body.funcionarioId, body.tipo, body.descricao, body.valorOriginal, body.dataLancamento ?? null, generated.installments[0].dataVencimento, generated.installments.length, body.observacoes ?? null]
+      [body.funcionarioId, body.tipo, body.descricao, body.valorOriginal, body.dataLancamento ?? null, generated.installments[0].dataVencimento, generated.installments.length, intervaloDias, body.observacoes ?? null]
     );
     const advanceId = result.rows[0].id;
     for (const installment of generated.installments) {
@@ -155,9 +212,12 @@ advancesRouter.post('/installments/:id/receive', async (req, res, next) => {
       await client.query('ROLLBACK');
       return res.status(404).json({ message: 'Parcela não encontrada.' });
     }
+    const advanceId = installment.rows[0].adiantamento_id as string;
     const expected = Number(installment.rows[0].valor_previsto);
     const alreadyPaid = Number(installment.rows[0].valor_pago);
     const remaining = Math.max(expected - alreadyPaid, 0);
+    const totalOpen = await client.query('SELECT COALESCE(SUM(saldo_parcela), 0)::NUMERIC(12,2) AS saldo_aberto FROM vw_parcelas_recebimento WHERE adiantamento_id = $1 AND status = $2', [advanceId, 'aberta']);
+    const totalRemaining = Number(totalOpen.rows[0].saldo_aberto);
     const amount = body.valor ?? remaining;
 
     if (remaining <= 0) {
@@ -165,23 +225,20 @@ advancesRouter.post('/installments/:id/receive', async (req, res, next) => {
       return res.status(400).json({ message: 'Parcela já está paga.' });
     }
 
-    if (amount > remaining) {
+    if (amount > totalRemaining) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ message: 'Recebimento maior que o saldo da parcela.' });
+      return res.status(400).json({ message: 'Recebimento maior que o saldo em aberto do lançamento.' });
     }
 
-    await client.query(
-      `INSERT INTO pagamentos_adiantamento (adiantamento_id, parcela_id, valor, pago_em, observacoes)
-       VALUES ($1, $2, $3, COALESCE($4, CURRENT_DATE), $5)`,
-      [installment.rows[0].adiantamento_id, req.params.id, amount, body.pagoEm ?? null, body.observacoes ?? null]
-    );
-    const paidAfter = alreadyPaid + amount;
-    if (paidAfter >= expected) {
-      await client.query('UPDATE parcelas_adiantamento SET status = $2, pago_em = COALESCE($3, CURRENT_DATE) WHERE id = $1', [req.params.id, 'paga', body.pagoEm ?? null]);
+    const remainingAfterAllocation = await allocatePaymentToInstallments(client, advanceId, amount, body.pagoEm ?? null, body.observacoes ?? null, req.params.id);
+    if (remainingAfterAllocation > 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ message: 'Não foi possível alocar todo o recebimento nas parcelas abertas.' });
     }
-    const balance = await client.query('SELECT valor_original, valor_pago FROM vw_adiantamentos_saldo WHERE id = $1', [installment.rows[0].adiantamento_id]);
+
+    const balance = await client.query('SELECT valor_original, valor_pago FROM vw_adiantamentos_saldo WHERE id = $1', [advanceId]);
     const status = Number(balance.rows[0].valor_pago) >= Number(balance.rows[0].valor_original) ? 'quitado' : 'parcial';
-    await client.query('UPDATE adiantamentos SET status = $2, quitado_em = CASE WHEN $2 = $3 THEN COALESCE(quitado_em, now()) ELSE NULL END WHERE id = $1', [installment.rows[0].adiantamento_id, status, 'quitado']);
+    await client.query('UPDATE adiantamentos SET status = $2, quitado_em = CASE WHEN $2 = $3 THEN COALESCE(quitado_em, now()) ELSE NULL END WHERE id = $1', [advanceId, status, 'quitado']);
     await client.query('COMMIT');
     const updated = await query('SELECT * FROM vw_parcelas_recebimento WHERE id = $1', [req.params.id]);
     return res.status(201).json(updated.rows[0]);
@@ -278,35 +335,7 @@ advancesRouter.post('/:id/payments', async (req, res, next) => {
       await client.query('ROLLBACK');
       return res.status(404).json({ message: 'Lançamento não encontrado.' });
     }
-    let remainingPayment = body.valor;
-    const installments = await client.query(
-      `SELECT id, valor_previsto
-         FROM parcelas_adiantamento
-        WHERE adiantamento_id = $1 AND status = 'aberta'
-        ORDER BY data_vencimento ASC, numero ASC
-        FOR UPDATE`,
-      [req.params.id]
-    );
-
-    for (const installment of installments.rows) {
-      if (remainingPayment <= 0) break;
-      const paid = await client.query('SELECT COALESCE(SUM(valor), 0)::NUMERIC(12,2) AS valor_pago FROM pagamentos_adiantamento WHERE parcela_id = $1', [installment.id]);
-      const installmentBalance = Math.max(Number(installment.valor_previsto) - Number(paid.rows[0].valor_pago), 0);
-      const amount = Math.min(remainingPayment, installmentBalance);
-
-      if (amount <= 0) continue;
-
-      await client.query(
-        `INSERT INTO pagamentos_adiantamento (adiantamento_id, parcela_id, valor, pago_em, observacoes)
-         VALUES ($1, $2, $3, COALESCE($4, CURRENT_DATE), $5)`,
-        [req.params.id, installment.id, amount, body.pagoEm ?? null, body.observacoes ?? null]
-      );
-      remainingPayment = Number((remainingPayment - amount).toFixed(2));
-
-      if (amount >= installmentBalance) {
-        await client.query('UPDATE parcelas_adiantamento SET status = $2, pago_em = COALESCE($3, CURRENT_DATE) WHERE id = $1', [installment.id, 'paga', body.pagoEm ?? null]);
-      }
-    }
+    const remainingPayment = await allocatePaymentToInstallments(client, req.params.id, body.valor, body.pagoEm ?? null, body.observacoes ?? null);
 
     if (remainingPayment > 0) {
       await client.query('ROLLBACK');

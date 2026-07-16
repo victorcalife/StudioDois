@@ -27,6 +27,7 @@ export type Advance = {
   data_lancamento: string;
   data_vencimento: string | null;
   parcelas_total: number;
+  intervalo_cobranca_dias?: number;
   status_calculado: Status;
   status: Status;
   quitado_em: string | null;

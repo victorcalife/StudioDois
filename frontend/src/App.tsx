@@ -36,6 +36,23 @@ function toMoney(value: string | number) {
   return money.format(Number(value ?? 0));
 }
 
+function formatCurrencyInput(value: string) {
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return '';
+  return money.format(Number(digits) / 100);
+}
+
+function parseCurrencyInput(value: string) {
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return 0;
+  return Number((Number(digits) / 100).toFixed(2));
+}
+
+function currencyInputFromNumber(value: string | number) {
+  const parsed = Number(value);
+  return parsed > 0 ? money.format(parsed) : '';
+}
+
 function toDate(value: string | null) {
   return value ? date.format(new Date(value)) : 'Sem data';
 }
@@ -50,9 +67,9 @@ function asChartValue<T extends Record<string, string>>(rows: T[], keys: Array<k
   });
 }
 
-function addMonths(dateValue: string, months: number) {
+function addDays(dateValue: string, days: number) {
   const [year, month, day] = dateValue.split('-').map(Number);
-  const dateValueUtc = new Date(Date.UTC(year, month - 1 + months, day));
+  const dateValueUtc = new Date(Date.UTC(year, month - 1, day + days));
   return dateValueUtc.toISOString().slice(0, 10);
 }
 
@@ -258,10 +275,13 @@ function Kpi({ icon, label, value, highlight = false }: { icon: JSX.Element; lab
 
 function ReceivablesPanel({ receivables, range, setRange, onSaved }: { receivables: Receivable[]; range: ReceivableRange | ''; setRange: (value: ReceivableRange | '') => void; onSaved: () => Promise<void> }) {
   const [busyId, setBusyId] = useState('');
+  const [receivedValues, setReceivedValues] = useState<Record<string, string>>({});
 
   async function receive(id: string) {
     setBusyId(id);
-    await api(`/advances/installments/${id}/receive`, { method: 'POST', body: JSON.stringify({}) });
+    const typedValue = parseCurrencyInput(receivedValues[id] ?? '');
+    await api(`/advances/installments/${id}/receive`, { method: 'POST', body: JSON.stringify(typedValue > 0 ? { valor: typedValue } : {}) });
+    setReceivedValues({ ...receivedValues, [id]: '' });
     await onSaved();
     setBusyId('');
   }
@@ -292,7 +312,7 @@ function ReceivablesPanel({ receivables, range, setRange, onSaved }: { receivabl
             <b>{toDate(item.data_vencimento)}</b>
           </div>
           <StatusChip range={item.faixa_recebimento} />
-          {item.faixa_recebimento === 'paga' ? <span className="stamp-label compact-stamp">PAGO</span> : <button className="primary small" disabled={busyId === item.id} onClick={() => void receive(item.id)}><CheckCircle2 size={15} /> Receber</button>}
+          {item.faixa_recebimento === 'paga' ? <span className="stamp-label compact-stamp">PAGO</span> : <div className="receive-action"><input type="text" inputMode="numeric" value={receivedValues[item.id] ?? ''} onChange={(event) => setReceivedValues({ ...receivedValues, [item.id]: formatCurrencyInput(event.target.value) })} placeholder="Recebido" /><button className="primary small" disabled={busyId === item.id} onClick={() => void receive(item.id)}><CheckCircle2 size={15} /> Receber</button></div>}
         </article>)}
       </div>
       {receivables.length === 0 && <div className="empty-state">Nenhum recebível encontrado para o filtro atual.</div>}
@@ -343,7 +363,7 @@ function EmployeePanel({ employees, onSaved }: { employees: Employee[]; onSaved:
 }
 
 function AdvancePanel({ employees, onSaved }: { employees: Employee[]; onSaved: () => Promise<void> }) {
-  const [form, setForm] = useState({ funcionarioId: '', tipo: 'adiantamento' as Tipo, descricao: '', valorOriginal: '', dataVencimento: '', parcelasTotal: '1', observacoes: '' });
+  const [form, setForm] = useState({ funcionarioId: '', tipo: 'adiantamento' as Tipo, descricao: '', valorOriginal: '', dataVencimento: '', parcelasTotal: '1', intervaloDias: '30', observacoes: '' });
   const [installments, setInstallments] = useState<Array<{ numero: number; dataVencimento: string; valorPrevisto: string }>>([]);
   const [busy, setBusy] = useState(false);
 
@@ -352,27 +372,29 @@ function AdvancePanel({ employees, onSaved }: { employees: Employee[]; onSaved: 
   }, [employees, form.funcionarioId]);
 
   useEffect(() => {
-    const total = Number(form.valorOriginal);
+    const total = parseCurrencyInput(form.valorOriginal);
     const count = Number(form.parcelasTotal);
-    if (!total || !count || !form.dataVencimento) {
+    const interval = Number(form.intervaloDias);
+    if (!total || !count || !interval || !form.dataVencimento) {
       setInstallments([]);
       return;
     }
     const values = splitMoney(total, count);
-    setInstallments(values.map((value, index) => ({ numero: index + 1, valorPrevisto: value, dataVencimento: addMonths(form.dataVencimento, index) })));
-  }, [form.valorOriginal, form.parcelasTotal, form.dataVencimento]);
+    setInstallments(values.map((value, index) => ({ numero: index + 1, valorPrevisto: currencyInputFromNumber(value), dataVencimento: addDays(form.dataVencimento, index * interval) })));
+  }, [form.valorOriginal, form.parcelasTotal, form.dataVencimento, form.intervaloDias]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
     await api('/advances', { method: 'POST', body: JSON.stringify(nulls({
       ...form,
-      valorOriginal: Number(form.valorOriginal),
+      valorOriginal: parseCurrencyInput(form.valorOriginal),
       parcelasTotal: installments.length,
+      intervaloDias: Number(form.intervaloDias),
       dataVencimento: form.dataVencimento || null,
-      parcelasRecebimento: installments.map((item) => ({ numero: item.numero, valorPrevisto: Number(item.valorPrevisto), dataVencimento: item.dataVencimento }))
+      parcelasRecebimento: installments.map((item) => ({ numero: item.numero, valorPrevisto: parseCurrencyInput(item.valorPrevisto), dataVencimento: item.dataVencimento }))
     })) });
-    setForm((current) => ({ ...current, descricao: '', valorOriginal: '', dataVencimento: '', parcelasTotal: '1', observacoes: '' }));
+    setForm((current) => ({ ...current, descricao: '', valorOriginal: '', dataVencimento: '', parcelasTotal: '1', intervaloDias: '30', observacoes: '' }));
     setInstallments([]);
     await onSaved();
     setBusy(false);
@@ -383,15 +405,15 @@ function AdvancePanel({ employees, onSaved }: { employees: Employee[]; onSaved: 
       <div className="panel-title"><h2>Novo lançamento</h2><span>empréstimo, compra ou adiantamento</span></div>
       <form className="dense-form" onSubmit={submit}>
         <select required value={form.funcionarioId} onChange={(event) => setForm({ ...form, funcionarioId: event.target.value })}><option value="">Selecione funcionário</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.nome}</option>)}</select>
-        <div className="form-row"><select value={form.tipo} onChange={(event) => setForm({ ...form, tipo: event.target.value as Tipo })}>{tipos.map((item) => <option key={item} value={item}>{item}</option>)}</select><input required type="number" min="0.01" step="0.01" value={form.valorOriginal} onChange={(event) => setForm({ ...form, valorOriginal: event.target.value })} placeholder="Valor" /></div>
+        <div className="form-row"><select value={form.tipo} onChange={(event) => setForm({ ...form, tipo: event.target.value as Tipo })}>{tipos.map((item) => <option key={item} value={item}>{item}</option>)}</select><input required type="text" inputMode="numeric" value={form.valorOriginal} onChange={(event) => setForm({ ...form, valorOriginal: formatCurrencyInput(event.target.value) })} placeholder="R$ 0,00" /></div>
         <input required value={form.descricao} onChange={(event) => setForm({ ...form, descricao: event.target.value })} placeholder="Descrição" />
-        <div className="form-row"><input required type="date" value={form.dataVencimento} onChange={(event) => setForm({ ...form, dataVencimento: event.target.value })} /><input type="number" min="1" max="120" value={form.parcelasTotal} onChange={(event) => setForm({ ...form, parcelasTotal: event.target.value })} placeholder="Parcelas" /></div>
+        <div className="form-row"><input required type="date" value={form.dataVencimento} onChange={(event) => setForm({ ...form, dataVencimento: event.target.value })} /><input type="number" min="1" max="120" value={form.parcelasTotal} onChange={(event) => setForm({ ...form, parcelasTotal: event.target.value })} placeholder="Parcelas" /><input type="number" min="1" max="3650" value={form.intervaloDias} onChange={(event) => setForm({ ...form, intervaloDias: event.target.value })} placeholder="Intervalo em dias" /></div>
         {installments.length > 0 && <div className="installments-editor">
           <strong>Datas de recebimento</strong>
           {installments.map((item, index) => <div className="installment-row" key={item.numero}>
             <span>{item.numero}ª</span>
             <input type="date" value={item.dataVencimento} onChange={(event) => setInstallments((current) => current.map((parcel, parcelIndex) => parcelIndex === index ? { ...parcel, dataVencimento: event.target.value } : parcel))} />
-            <input type="number" min="0.01" step="0.01" value={item.valorPrevisto} onChange={(event) => setInstallments((current) => current.map((parcel, parcelIndex) => parcelIndex === index ? { ...parcel, valorPrevisto: event.target.value } : parcel))} />
+            <input type="text" inputMode="numeric" value={item.valorPrevisto} onChange={(event) => setInstallments((current) => current.map((parcel, parcelIndex) => parcelIndex === index ? { ...parcel, valorPrevisto: formatCurrencyInput(event.target.value) } : parcel))} placeholder="R$ 0,00" />
           </div>)}
         </div>}
         <input value={form.observacoes} onChange={(event) => setForm({ ...form, observacoes: event.target.value })} placeholder="Observação" />
@@ -418,7 +440,7 @@ function LedgerTable({ advances, columns, onSaved }: { advances: Advance[]; colu
   }
 
   async function pay(id: string) {
-    const amount = Number(payment[id]);
+    const amount = parseCurrencyInput(payment[id] ?? '');
     if (!amount) return;
     setBusyId(id);
     await api(`/advances/${id}/payments`, { method: 'POST', body: JSON.stringify({ valor: amount }) });
@@ -444,7 +466,7 @@ function LedgerTable({ advances, columns, onSaved }: { advances: Advance[]; colu
             {columns.vencimento && <td data-label="Vencimento">{toDate(item.proximo_vencimento ?? item.data_vencimento)}<small>{item.parcelas_abertas ?? 0} parcela(s) aberta(s)</small></td>}
             {columns.status && <td data-label="Status"><StatusBadge status={item.status_calculado} /></td>}
             <td data-label="Ações" className="actions-cell">
-              {item.status_calculado === 'quitado' ? <span className="stamp-label">QUITADO</span> : <><div className="pay-inline"><input type="number" min="0.01" step="0.01" value={payment[item.id] ?? ''} onChange={(event) => setPayment({ ...payment, [item.id]: event.target.value })} placeholder="R$" /><button className="ghost small" disabled={busyId === item.id} onClick={() => void pay(item.id)}>Pagar</button></div><button className="settle" disabled={busyId === item.id} onClick={() => void settle(item.id)}><Stamp size={15} /> Carimbar quitado</button></>}
+              {item.status_calculado === 'quitado' ? <span className="stamp-label">QUITADO</span> : <><div className="pay-inline"><input type="text" inputMode="numeric" value={payment[item.id] ?? ''} onChange={(event) => setPayment({ ...payment, [item.id]: formatCurrencyInput(event.target.value) })} placeholder="R$ 0,00" /><button className="ghost small" disabled={busyId === item.id} onClick={() => void pay(item.id)}>Pagar</button></div><button className="settle" disabled={busyId === item.id} onClick={() => void settle(item.id)}><Stamp size={15} /> Carimbar quitado</button></>}
             </td>
           </tr>)}
         </tbody>
